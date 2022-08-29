@@ -147,24 +147,40 @@ class LeafNode extends BPlusNode {
     @Override
     public LeafNode get(DataBox key) {
         // TODO(proj2): implement
-
-        return null;
+        return this;
     }
 
     // See BPlusNode.getLeftmostLeaf.
     @Override
     public LeafNode getLeftmostLeaf() {
         // TODO(proj2): implement
-
-        return null;
+        return this;
     }
 
     // See BPlusNode.put.
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
+        int index = InnerNode.numLessThanEqual(key, keys);
+        keys.add(index, key);
+        rids.add(index+1, rid);
 
-        return Optional.empty();
+        if(keys.size() <= metadata.getOrder() * 2){
+            sync();
+            return Optional.empty();
+        } else{
+            List<DataBox> right_keys = keys.subList(metadata.getOrder(), keys.size());
+            List<RecordId> right_rids = rids.subList(metadata.getOrder(), rids.size());
+
+            keys = keys.subList(0, metadata.getOrder());
+            rids = rids.subList(0, metadata.getOrder());
+            sync();
+
+            LeafNode new_RightSibling = new LeafNode(metadata, bufferManager, right_keys, right_rids, rightSibling, treeContext);
+            rightSibling = Optional.of(new_RightSibling.getPage().getPageNum());
+            sync();
+            return Optional.of(new Pair(right_keys.get(0), new_RightSibling.getPage().getPageNum()));
+        }
     }
 
     // See BPlusNode.bulkLoad.
@@ -180,7 +196,12 @@ class LeafNode extends BPlusNode {
     @Override
     public void remove(DataBox key) {
         // TODO(proj2): implement
-
+        int index = keys.indexOf(key);
+        if(index >= 0){
+            keys.remove(index);
+            rids.remove(index);
+            sync();
+        }
         return;
     }
 
@@ -376,8 +397,22 @@ class LeafNode extends BPlusNode {
         // Note: LeafNode has two constructors. To implement fromBytes be sure to
         // use the constructor that reuses an existing page instead of fetching a
         // brand new one.
+        Page page = bufferManager.fetchPage(treeContext, pageNum);
+        Buffer buf = page.getBuffer();
 
-        return null;
+        byte nodeType = buf.get();
+        assert(nodeType == (byte) 1);
+        Optional<Long> rightSibling = Optional.of(buf.getLong());
+        int n = buf.getInt();
+        List<DataBox> keys = new ArrayList<>();
+        List<RecordId> rids = new ArrayList<>();
+
+        for (int i = 0; i < n; ++i) {
+            keys.add(DataBox.fromBytes(buf, metadata.getKeySchema()));
+            rids.add(RecordId.fromBytes(buf));
+        }
+
+        return new LeafNode(metadata, bufferManager, page, keys, rids, rightSibling, treeContext);
     }
 
     // Builtins ////////////////////////////////////////////////////////////////

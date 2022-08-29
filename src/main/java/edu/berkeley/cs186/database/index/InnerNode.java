@@ -81,8 +81,8 @@ class InnerNode extends BPlusNode {
     @Override
     public LeafNode get(DataBox key) {
         // TODO(proj2): implement
-
-        return null;
+        BPlusNode child = BPlusNode.fromBytes(metadata, bufferManager, treeContext, children.get(numLessThanEqual(key, keys)));
+        return child.get(key);
     }
 
     // See BPlusNode.getLeftmostLeaf.
@@ -90,16 +90,44 @@ class InnerNode extends BPlusNode {
     public LeafNode getLeftmostLeaf() {
         assert(children.size() > 0);
         // TODO(proj2): implement
+        BPlusNode leftMostChild = BPlusNode.fromBytes(metadata, bufferManager, treeContext, children.get(0));
+        return leftMostChild.getLeftmostLeaf();
+    }
 
-        return null;
+    private Optional<Pair<DataBox, Long>> insert(DataBox key, Long child){
+        int index = InnerNode.numLessThanEqual(key, keys);
+        keys.add(index, key);
+        children.add(index+1, child);
+
+        if(keys.size() <= metadata.getOrder() * 2){
+            sync();
+            return Optional.empty();
+        } else{
+            DataBox split_key = keys.get(metadata.getOrder());
+            List<DataBox> right_keys = keys.subList(metadata.getOrder()+1, keys.size());
+            List<Long> right_children = children.subList(metadata.getOrder()+1, children.size());
+
+            keys = keys.subList(0, metadata.getOrder());
+            children = children.subList(0, metadata.getOrder()+1);
+            sync();
+
+            InnerNode newRightSibling = new InnerNode(metadata, bufferManager, right_keys, right_children, treeContext);
+            return Optional.of(new Pair(split_key, newRightSibling.getPage().getPageNum()));
+        }
     }
 
     // See BPlusNode.put.
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
-
-        return Optional.empty();
+        BPlusNode child = BPlusNode.fromBytes(metadata, bufferManager, treeContext, children.get(numLessThanEqual(key, keys)));
+        Optional<Pair<DataBox, Long>> splitInfo = child.put(key, rid);
+        if(!splitInfo.isPresent()){
+            return Optional.empty();
+        } else {
+            Pair<DataBox, Long> info = splitInfo.get();
+            return insert(info.getFirst(), info.getSecond());
+        }
     }
 
     // See BPlusNode.bulkLoad.
@@ -115,7 +143,8 @@ class InnerNode extends BPlusNode {
     @Override
     public void remove(DataBox key) {
         // TODO(proj2): implement
-
+        LeafNode leaf = get(key);
+        leaf.remove(key);
         return;
     }
 
