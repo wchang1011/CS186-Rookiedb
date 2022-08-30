@@ -123,7 +123,7 @@ class InnerNode extends BPlusNode {
         BPlusNode child = BPlusNode.fromBytes(metadata, bufferManager, treeContext, children.get(numLessThanEqual(key, keys)));
         Optional<Pair<DataBox, Long>> splitInfo = child.put(key, rid);
         if(!splitInfo.isPresent()){
-            return Optional.empty();
+            return splitInfo;
         } else {
             Pair<DataBox, Long> info = splitInfo.get();
             return insert(info.getFirst(), info.getSecond());
@@ -135,8 +135,20 @@ class InnerNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
-
-        return Optional.empty();
+        BPlusNode rightMostChild = BPlusNode.fromBytes(metadata, bufferManager, treeContext, children.get(children.size()-1));
+        Optional<Pair<DataBox, Long>> splitInfo = rightMostChild.bulkLoad(data, fillFactor);
+        if(!splitInfo.isPresent()){
+            return splitInfo;
+        } else {
+            DataBox splitKey = splitInfo.get().getFirst();
+            Long child = splitInfo.get().getSecond();
+            Optional<Pair<DataBox, Long>> mySplitInfo = insert(splitKey, child);
+            if(!mySplitInfo.isPresent()) {
+                return bulkLoad(data, fillFactor);
+            }else{
+                return mySplitInfo;
+            }
+        }
     }
 
     // See BPlusNode.remove.

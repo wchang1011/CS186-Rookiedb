@@ -10,6 +10,7 @@ import edu.berkeley.cs186.database.databox.Type;
 import edu.berkeley.cs186.database.io.DiskSpaceManager;
 import edu.berkeley.cs186.database.memory.BufferManager;
 import edu.berkeley.cs186.database.table.RecordId;
+import org.omg.CORBA._PolicyStub;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -202,8 +203,7 @@ public class BPlusTree {
         LockUtil.ensureSufficientLockHeld(lockContext, LockType.NL);
 
         // TODO(proj2): Return a BPlusTreeIterator.
-
-        return Collections.emptyIterator();
+        return new BPlusTreeIterator(root.getLeftmostLeaf());
     }
 
     /**
@@ -235,8 +235,8 @@ public class BPlusTree {
         LockUtil.ensureSufficientLockHeld(lockContext, LockType.NL);
 
         // TODO(proj2): Return a BPlusTreeIterator.
-
-        return Collections.emptyIterator();
+        LeafNode startNode = root.get(key);
+        return new BPlusTreeIterator(startNode, key);
     }
 
     private void splitRoot(DataBox key, Long child) {
@@ -299,7 +299,12 @@ public class BPlusTree {
         // Note: You should NOT update the root variable directly.
         // Use the provided updateRoot() helper method to change
         // the tree's root if the old root splits.
-
+        while(data.hasNext()){
+            Optional<Pair<DataBox, Long>> splitInfo = root.bulkLoad(data, fillFactor);
+            if(splitInfo.isPresent()){
+                splitRoot(splitInfo.get().getFirst(), splitInfo.get().getSecond());
+            }
+        }
         return;
     }
 
@@ -434,19 +439,42 @@ public class BPlusTree {
     // Iterator ////////////////////////////////////////////////////////////////
     private class BPlusTreeIterator implements Iterator<RecordId> {
         // TODO(proj2): Add whatever fields and constructors you want here.
+        LeafNode curNode;
+        Iterator<RecordId> curIter;
+        BPlusTreeIterator(LeafNode node){
+            curNode = node;
+            curIter = curNode.scanAll();
+        }
+        BPlusTreeIterator(LeafNode node, DataBox key){
+            curNode = node;
+            curIter = curNode.scanGreaterEqual(key);
+        }
 
         @Override
         public boolean hasNext() {
             // TODO(proj2): implement
-
-            return false;
+            if(curIter.hasNext()==true){
+                return true;
+            }else{
+                Optional<LeafNode> _opt_rightSibling = curNode.getRightSibling();
+                if(_opt_rightSibling.isPresent()){
+                    curNode = _opt_rightSibling.get();
+                    curIter = curNode.scanAll();
+                    return true;
+                }else{
+                    return false;
+                }
+            }
         }
 
         @Override
         public RecordId next() {
             // TODO(proj2): implement
-
-            throw new NoSuchElementException();
+            if(curIter.hasNext()){
+                return curIter.next();
+            }else {
+                throw new NoSuchElementException();
+            }
         }
     }
 }

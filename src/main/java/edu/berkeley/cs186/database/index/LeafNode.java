@@ -161,9 +161,12 @@ class LeafNode extends BPlusNode {
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
+        if (keys.contains(key)) {
+            throw new BPlusTreeException("insert duplicate entries with the same key");
+        }
         int index = InnerNode.numLessThanEqual(key, keys);
         keys.add(index, key);
-        rids.add(index+1, rid);
+        rids.add(index, rid);
 
         if(keys.size() <= metadata.getOrder() * 2){
             sync();
@@ -188,8 +191,27 @@ class LeafNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
         // TODO(proj2): implement
+        int threshold = (int) Math.ceil(fillFactor* metadata.getOrder()*2);
+        while(keys.size() < threshold && data.hasNext()){
+            Pair<DataBox, RecordId> p = data.next();
+            keys.add(p.getFirst());
+            rids.add(p.getSecond());
+        }
 
-        return Optional.empty();
+        Optional<Pair<DataBox, Long>> ret = Optional.empty();
+        if(data.hasNext()){
+            List<DataBox> new_keys = new ArrayList<>();
+            List<RecordId> new_rids = new ArrayList<>();
+            Pair<DataBox, RecordId> p = data.next();
+            new_keys.add(p.getFirst());
+            new_rids.add(p.getSecond());
+
+            LeafNode new_RightSibling = new LeafNode(metadata, bufferManager, new_keys, new_rids, rightSibling, treeContext);
+            rightSibling = Optional.of(new_RightSibling.getPage().getPageNum());
+            ret = Optional.of(new Pair(p.getFirst(), rightSibling.get()));
+        }
+        sync();
+        return ret;
     }
 
     // See BPlusNode.remove.
@@ -402,7 +424,9 @@ class LeafNode extends BPlusNode {
 
         byte nodeType = buf.get();
         assert(nodeType == (byte) 1);
-        Optional<Long> rightSibling = Optional.of(buf.getLong());
+
+        long rs = buf.getLong();
+        Optional<Long> rightSibling = rs == -1 ? Optional.empty() : Optional.of(rs);
         int n = buf.getInt();
         List<DataBox> keys = new ArrayList<>();
         List<RecordId> rids = new ArrayList<>();
